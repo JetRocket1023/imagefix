@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>投影片批量修圖</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --card:#fff; --ink:#1c2533; --muted:#667085; --line:#e3e7ee;
+    --brand:#1f5fbf; --brand-ink:#fff; --ok:#1a8f4c; --bad:#c43c3c; --run:#c98a00;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.6 "Microsoft JhengHei","PingFang TC","Noto Sans TC",system-ui,sans-serif}
+  header{background:#14294d;color:#fff;padding:14px 24px;display:flex;align-items:center;gap:12px}
+  header h1{font-size:18px;margin:0;font-weight:600;letter-spacing:.5px}
+  header .spec{font-size:13px;opacity:.75}
+  header a{margin-left:auto;color:#cfe0ff;font-size:13px;text-decoration:none}
+  main{max-width:1080px;margin:24px auto;padding:0 16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px;margin-bottom:18px}
+  h2{font-size:16px;margin:0 0 12px}
+  button,.btn{font:inherit;border:0;border-radius:8px;padding:9px 18px;cursor:pointer;
+       background:var(--brand);color:var(--brand-ink);text-decoration:none;display:inline-block}
+  button.ghost{background:#eef2f8;color:var(--ink)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  select,input[type=password]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .muted{color:var(--muted);font-size:13px}
+  .warn{background:#fff7e0;border:1px solid #f1d58a;color:#7a5a00;border-radius:8px;padding:10px 14px;font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>投影片批量修圖</h1><span class="spec">Gemini AI ｜ 輸出 960×560 JPG</span>
+  {% if has_password %}<a href="{{ url_for('logout') }}">登出</a>{% endif %}
+</header>
+<main>{% block body %}{% endblock %}</main>
+</body>
+</html>

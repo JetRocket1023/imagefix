@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: slide-fixer
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # 只能用 1 個 worker（工作進度存在記憶體），用多執行緒處理並行
+    startCommand: gunicorn app:app --workers 1 --threads 8 --timeout 180
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GEMINI_IMAGE_MODEL
+        value: gemini-2.5-flash-image
+      - key: GEMINI_WORKERS
+        value: "2"
+      - key: MAX_FILES
+        value: "30"

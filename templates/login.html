@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card" style="max-width:380px;margin:60px auto">
+  <h2>請輸入使用密碼</h2>
+  <form method="post">
+    <input type="password" name="password" autofocus required style="width:100%;margin-bottom:12px">
+    {% if error %}<p style="color:var(--bad);margin:0 0 10px">{{ error }}</p>{% endif %}
+    <button type="submit" style="width:100%">進入</button>
+  </form>
+</div>
+{% endblock %}

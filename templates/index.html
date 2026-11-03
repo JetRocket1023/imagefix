@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+  .drop{border:2px dashed #b9c6da;border-radius:10px;padding:34px 16px;text-align:center;background:#f9fbfe;cursor:pointer;transition:.15s}
+  .drop.over{border-color:var(--brand);background:#eef4ff}
+  .drop b{color:var(--brand)}
+  .opts{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-top:16px}
+  .opts label{display:flex;align-items:center;gap:6px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:14px}
+  .tile{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff;position:relative}
+  .tile img{width:100%;aspect-ratio:960/560;object-fit:cover;display:block;background:#e9edf3}
+  .tile .meta{padding:6px 8px;font-size:12.5px;display:flex;justify-content:space-between;gap:6px;align-items:center}
+  .tile .meta .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tile .x{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:0;border-radius:50%;width:24px;height:24px;padding:0;font-size:14px;line-height:24px}
+  .tag{font-size:12px;padding:1px 8px;border-radius:99px;white-space:nowrap;background:#eef2f8;color:var(--muted)}
+  .tag.成功{background:#e5f5ec;color:var(--ok)} .tag.失敗{background:#fbe9e9;color:var(--bad)} .tag.處理中{background:#fff3d6;color:var(--run)}
+  .err{font-size:12px;color:var(--bad);padding:0 8px 8px;word-break:break-all}
+  .bar{height:8px;background:#e7ebf2;border-radius:99px;overflow:hidden;margin:10px 0 4px}
+  .bar i{display:block;height:100%;width:0;background:var(--brand);transition:width .4s}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  dialog{border:0;border-radius:10px;padding:0;max-width:96vw;background:#222}
+  dialog img{max-width:96vw;max-height:88vh;display:block}
+  dialog::backdrop{background:rgba(0,0,0,.6)}
+  .tile.clickable img{cursor:zoom-in}
+</style>
+
+{% if not key_ready %}
+<div class="warn" style="margin-bottom:18px">伺服器尚未設定 <code>GEMINI_API_KEY</code>，請到 Render 的 Environment 頁面設定後重新部署。</div>
+{% endif %}
+
+<div class="card" id="uploadCard">
+  <h2>1. 選擇要修的投影片照片</h2>
+  <div class="drop" id="drop">
+    把照片拖曳到這裡，或 <b>點這裡選擇檔案</b><br>
+    <span class="muted">支援 JPG / PNG / WEBP，一次最多 {{ max_files }} 張</span>
+  </div>
+  <input type="file" id="picker" accept="image/*" multiple hidden>
+  <div class="grid" id="pending"></div>
+
+  <div class="opts">
+    <label>模型
+      <select id="model">
+        {% for k, v in models.items() %}<option value="{{ k }}" {% if k == default_model %}selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select>
+    </label>
+    <label><input type="checkbox" id="compare" checked> 產生原圖／修圖對照圖</label>
+    <span style="flex:1"></span>
+    <button class="ghost" id="clearBtn" disabled>清除</button>
+    <button id="startBtn" disabled>開始修圖</button>
+  </div>
+</div>
+
+<div class="card" id="jobCard" hidden>
+  <h2>2. 處理進度</h2>
+  <div class="row"><span id="progText">準備中…</span><span style="flex:1"></span>
+    <a class="btn" id="zipBtn" hidden>下載全部（ZIP）</a>
+    <button class="ghost" id="againBtn" hidden>再修一批</button>
+  </div>
+  <div class="bar"><i id="progBar"></i></div>
+  <p class="muted" style="margin:4px 0 0">每張約 10～40 秒。AI 會重畫整張圖，請點縮圖看對照圖，核對文字與數據有沒有被改掉。結果保留 3 小時。</p>
+  <div class="grid" id="results"></div>
+</div>
+
+<dialog id="viewer"><img id="viewerImg" alt=""></dialog>
+
+<script>
+const MAX = {{ max_files }};
+let files = [];
+const $ = s => document.querySelector(s);
+const drop = $('#drop'), picker = $('#picker');
+
+drop.onclick = () => picker.click();
+picker.onchange = () => { add([...picker.files]); picker.value = ''; };
+['dragenter','dragover'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', ev => add([...ev.dataTransfer.files]));
+
+function add(list){
+  list = list.filter(f => f.type.startsWith('image/'));
+  files = files.concat(list).slice(0, MAX);
+  if (files.length >= MAX) alert(`一次最多 ${MAX} 張，多的已略過`);
+  renderPending();
+}
+function renderPending(){
+  const g = $('#pending'); g.innerHTML = '';
+  files.forEach((f, i) => {
+    const t = document.createElement('div'); t.className = 'tile';
+    const url = URL.createObjectURL(f);
+    t.innerHTML = `<img src="${url}"><button class="x" title="移除">×</button><div class="meta"><span class="n"></span></div>`;
+    t.querySelector('.n').textContent = f.name;
+    t.querySelector('.x').onclick = () => { files.splice(i, 1); renderPending(); };
+    g.appendChild(t);
+  });
+  $('#startBtn').disabled = $('#clearBtn').disabled = files.length === 0;
+  $('#startBtn').textContent = files.length ? `開始修圖（${files.length} 張）` : '開始修圖';
+}
+$('#clearBtn').onclick = () => { files = []; renderPending(); };
+
+$('#startBtn').onclick = async () => {
+  const fd = new FormData();
+  files.forEach(f => fd.append('files', f, f.name));
+  fd.append('model', $('#model').value);
+  fd.append('compare', $('#compare').checked ? '1' : '0');
+  $('#startBtn').disabled = true; $('#startBtn').textContent = '上傳中…';
+  try {
+    const r = await fetch('/api/jobs', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    $('#uploadCard').hidden = true; $('#jobCard').hidden = false;
+    poll(j.job_id);
+  } catch (e) {
+    alert('無法開始：' + e.message); renderPending();
+  }
+};
+
+async function poll(id){
+  let j;
+  try { j = await (await fetch(`/api/jobs/${id}`)).json(); }
+  catch { return setTimeout(() => poll(id), 4000); }
+  const ok = j.items.filter(i => i.status === '成功').length;
+  const bad = j.items.filter(i => i.status === '失敗').length;
+  $('#progBar').style.width = (j.done / j.total * 100) + '%';
+  $('#progText').textContent = j.finished
+    ? `完成：成功 ${ok} 張${bad ? `、失敗 ${bad} 張` : ''}`
+    : `處理中 ${j.done} / ${j.total}`;
+  renderResults(id, j.items, j.compare);
+  if (j.finished) {
+    const z = $('#zipBtn'); z.href = `/api/jobs/${id}/zip`; z.hidden = ok === 0;
+    $('#againBtn').hidden = false;
+  } else setTimeout(() => poll(id), 2500);
+}
+
+function renderResults(id, items, hasCmp){
+  const g = $('#results'); g.innerHTML = '';
+  items.forEach(it => {
+    const t = document.createElement('div'); t.className = 'tile';
+    const stem = it.name.replace(/\.[^.]+$/, '');
+    let img = '<img>';
+    if (it.status === '成功') {
+      t.classList.add('clickable');
+      img = `<img src="/api/jobs/${id}/file/${encodeURIComponent(it.output)}" title="點擊看對照圖">`;
+    }
+    t.innerHTML = `${img}<div class="meta"><span class="n"></span><span class="tag ${it.status}">${it.status}</span></div>` +
+      (it.message ? `<div class="err"></div>` : '');
+    t.querySelector('.n').textContent = it.name;
+    if (it.message) t.querySelector('.err').textContent = it.message;
+    if (it.status === '成功') {
+      t.querySelector('img').onclick = () => {
+        const cmp = hasCmp
+          ? `/api/jobs/${id}/file/${encodeURIComponent('_對照圖/' + stem + '_對照.jpg')}`
+          : `/api/jobs/${id}/file/${encodeURIComponent(it.output)}`;
+        $('#viewerImg').src = cmp; $('#viewer').showModal();
+      };
+    }
+    g.appendChild(t);
+  });
+}
+$('#viewer').onclick = () => $('#viewer').close();
+$('#againBtn').onclick = () => { files = []; renderPending(); $('#jobCard').hidden = true; $('#uploadCard').hidden = false;
+  $('#zipBtn').hidden = $('#againBtn').hidden = true; $('#results').innerHTML = ''; $('#progBar').style.width = '0'; };
+</script>
+{% endblock %}
